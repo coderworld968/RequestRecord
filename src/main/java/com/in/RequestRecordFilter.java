@@ -1,6 +1,5 @@
 package com.in;
 
-import brave.Tracer;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -29,13 +28,10 @@ import javax.servlet.http.HttpServletResponseWrapper;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 
 
 @WebFilter(urlPatterns = "/*", filterName = "RecordFilter")
 public class RequestRecordFilter implements Filter {
-// RequestBodyAdvice和ResponseBodyAdvice
-
     private static final Logger LOGGER = LoggerFactory.getLogger(RequestRecordFilter.class);
     org.slf4j.Marker marker = org.slf4j.MarkerFactory.getMarker("REQUEST");
 
@@ -46,13 +42,13 @@ public class RequestRecordFilter implements Filter {
         String method = request.getMethod();
         StringBuffer bufHeader = getHeader(request);
         StringBuffer bufParam = getParam(request);
-        RequestWapper wrappedRequest = new RequestWapper(request);
+        RequestWrapper wrappedRequest = new RequestWrapper(request);
         String body = getBody(wrappedRequest);
         wrappedRequest.resetInputStream();
 
-        ResponseWrapper wappedResponse = new ResponseWrapper(servletResponse);
-        filterChain.doFilter(wrappedRequest, wappedResponse);
-        String responseData = getResponseData(wappedResponse);
+        ResponseWrapper wrappedResponse = new ResponseWrapper(servletResponse);
+        filterChain.doFilter(wrappedRequest, wrappedResponse);
+        String responseData = getResponseData(wrappedResponse);
         LOGGER.error(marker,
                 "uri=[{}],method=[{}],Header=[{}],Parameter=[{}],Body=[{}],response=[{}]",
                 uri, method, bufHeader.toString(), bufParam.toString(), body, responseData);
@@ -66,7 +62,7 @@ public class RequestRecordFilter implements Filter {
         return result;
     }
 
-    private String getBody(RequestWapper wrappedRequest) throws IOException {
+    private String getBody(RequestWrapper wrappedRequest) throws IOException {
         String body = IOUtils.toString(wrappedRequest.getReader());
         return body;
     }
@@ -93,13 +89,13 @@ public class RequestRecordFilter implements Filter {
         return bufHeader;
     }
 
-    private static class RequestWapper extends HttpServletRequestWrapper {
+    private static class RequestWrapper extends HttpServletRequestWrapper {
 
         private byte[] rawData;
         private HttpServletRequest request;
         private ResettableServletInputStream servletStream;
 
-        public RequestWapper(HttpServletRequest request) {
+        public RequestWrapper(HttpServletRequest request) {
             super(request);
             this.request = request;
             this.servletStream = new ResettableServletInputStream();
@@ -153,7 +149,7 @@ public class RequestRecordFilter implements Filter {
         }
     }
 
-    class ResponseWrapper extends HttpServletResponseWrapper {
+    private static class ResponseWrapper extends HttpServletResponseWrapper {
 
         private ByteArrayOutputStream bos = new ByteArrayOutputStream();
         private ServletResponse response;
@@ -167,22 +163,15 @@ public class RequestRecordFilter implements Filter {
 
         @Override
         public ServletOutputStream getOutputStream() {
-            // 将数据写到 byte 中
             return new MyServletOutputStream(bos);
         }
 
-        /**
-         * 重写父类的 getWriter() 方法，将响应数据缓存在 PrintWriter 中
-         */
         @Override
         public PrintWriter getWriter() throws UnsupportedEncodingException {
             writer = new PrintWriter(new OutputStreamWriter(bos, "utf-8"));
             return writer;
         }
 
-        /**
-         * 获取缓存在 PrintWriter 中的响应数据
-         */
         public byte[] getData() throws IOException {
             bos.flush();
             data = this.bos.toByteArray();
